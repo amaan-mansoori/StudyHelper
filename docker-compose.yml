@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=app
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_v2:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: 
+      context: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - POSTGRES_SERVER=db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=app
+      - SECRET_KEY=CHANGE_THIS_IN_PRODUCTION_SECRET_KEY_12345
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Frontend in dev mode usually runs locally for better HMR, 
+  # but here we provide a production-like preview or dev container if needed.
+  # For this specific request, "npm run dev" is requested for frontend, so 
+  # this docker-compose mainly handles backend+db, but we include frontend for completeness.
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    # Note: For real Next.js dev in Docker, you need volume mounts for node_modules adjustments
+    # Here we expect the user to run `npm run dev` locally as per instructions
+    # OR `docker compose up` to run the production build.
+    # We will set it to run dev for convenience in docker too, but bind mount source.
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data_v2:
